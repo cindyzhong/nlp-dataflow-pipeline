@@ -13,6 +13,8 @@ The process follows:
 2. The Cloud Dataflow job picks up the files and sends the file to Cloud Natural Language APIs one by one
 3. The Cloud Dataflow job writes the result to BigQuery
 
+![Alt text](https://github.com/cindyzhong/nlp-dataflow-pipeline/blob/master/images/NLP%20Dataflow%20Pipeline.jpg "NLP Dataflow Pipeline")
+
 ## How to install the Speech Analysis Framework
 
 1. [Install the Google Cloud SDK](https://cloud.google.com/sdk/install)
