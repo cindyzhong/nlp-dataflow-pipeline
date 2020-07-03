@@ -19,6 +19,7 @@ import argparse
 import logging
 import re
 import json
+import time
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
@@ -32,7 +33,8 @@ class ProcessJSON(beam.DoFn):
 
     def process(self, data):
         import datetime as dt
-        mydata = json.loads(data)
+        filename = data[0]
+        mydata = json.loads(data[1])
 
         # Get the concatenated live chat
         livechat_text = ""
@@ -59,19 +61,9 @@ class ProcessJSON(beam.DoFn):
                   'year':year,
                   'month':month,
                   'day':day,
-                  'transcript':livechat_text}
+                  'transcript':livechat_text,
+                  'filename':filename}
 
-
-        # print ("####################################################")
-        # print (type(starttime))
-        # print (starttime)
-        # print (endtime)
-        # print (date)
-        # print (year)
-        # print (month)
-        # print (day)
-        # print (duration)
-        # print ("####################################################")
         return [processjson_output]
 
 
@@ -92,10 +84,9 @@ class GetNLPOutput(beam.DoFn):
         return {'sentence': out_sentence, 'speaker': out_speaker}
 
     def process(self, processjson_output):
-        #mimic the schema of saf
 
+        #mimic the schema of saf
         get_nlp_output_response = processjson_output
-        #get_nlp_output_response['transcript'] = livechat_text
         get_nlp_output_response['sentences'] = []
         get_nlp_output_response['entities'] = []
 
@@ -146,12 +137,14 @@ class GetNLPOutput(beam.DoFn):
             })
         # [END NLP analyzeEntitySentiment]
 
+        # handle API Rate Limit for NLP
+        time.sleep(3)
 
-        # Map back the speaker tags to the chat
-        print ("####################################################")
-        print (type(get_nlp_output_response))
-        print (json.dumps(get_nlp_output_response, indent=4))
-        print ("####################################################")
+        # print ("######################################################")
+        # print ("FINISHED LOADING " + get_nlp_output_response['filename'])
+        # print (get_nlp_output_response['transcript'])
+        # print ("######################################################")
+
         return [get_nlp_output_response]
 
 
@@ -178,13 +171,14 @@ def run(argv=None, save_main_session=True):
     p = beam.Pipeline(options=pipeline_options)
 
     # Read the JSON files
-    chats = p | 'ReadfromGCS' >> beam.io.ReadFromText(known_args.input)
+    # chats = p | 'ReadfromGCS' >> beam.io.ReadFromText(known_args.input)
+    chats = p | 'ReadfromGCS' >> beam.io.textio.ReadFromTextWithFilename(known_args.input)
 
     # Process live chat data in sentence into a long string
     chat = chats | 'ProcessJSON' >> beam.ParDo(ProcessJSON())
 
     # Get NLP Sentiment and Entity response
-    nlp_output = chat | 'NaturalLanguageOutput' >> beam.ParDo(GetNLPOutput())
+    nlp_output = chat | 'NaturalLanguageOutput' >> beam.ParDo(GetNLPOutput(filename=known_args.input))
 
     # Write to BigQuery
     bigquery_table_schema = {
@@ -369,7 +363,8 @@ def run(argv=None, save_main_session=True):
              create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
              write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)
 
-    p.run().wait_until_finish()
+    #p.run().wait_until_finish()
+    p.run()
 
 
 if __name__ == '__main__':
